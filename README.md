@@ -1,13 +1,10 @@
 # Redux in C++
 _Tiny implementation of the redux pattern for C++14_
 
-
 Redux is a pattern for state management. Its [canonical implementation is Javascript](https://redux.js.org), and the documentation uses Javascript for all of its examples. I wrote this little piece of C++ code to help C++ programmers (like myself) understand what the pattern does.
 
 
-
 ## Basic example
-
 ```C++
 /* Define types for your state and action. */
 using State = int;
@@ -38,12 +35,33 @@ store.dispatch("Increment");
 
 
 ## Middleware
+Middleware is how the redux pattern constrains an application's influence on the "outside world." Some actions dispatched to the store are pure, in the sense that they only trigger the creation of a new state via `state = reducer(state, action)`. However certain actions need to be transformed before reaching the reducer, or should trigger a cascade of new actions. They might also need to launch asynchronous tasks, interact with the filesystem, or send commands to the view hierarchy. Middleware is how redux controls where and how these "side-effects" are allowed to take place.
 
-Middleware is how the redux pattern constrains the app's influence on the outside world. Many actions dispatched to the store are pure - they simply invoke `state = reducer(state, action)`. Others need to do things that transform the action before it reaches the reducer, or dispatch further actions to the store (so-called "side-effects"). Middleware is thus a subroutine, which reads from, and operates on the action, the store, and outside services.
+If you visit the [official documentation](https://redux.js.org/advanced/middleware#middleware), you'll see an article that walks you through the steps that led to the current formulation of middleware. But I think for C++ programmers it's easier to say outright what the pattern actually is. Middleware is a chain of operators that wrap the store's `dispatch` function. Each link in the chain can operate on the store, on the action, or on external services, and can then optionally invoke the next link in the chain. The final link is the store's original middleware, which is defined as follows:
 
-The agreed-upon pattern is that middlewares are composed with one another - with each (optionally) invoking the next. The final (innermost) middleware invokes the reducer, replaces the state, and notifies subscribers.
+```C++
+next = [this, reducer] (auto& action)
+{
+    state = reducer(state, action);
 
-In this implementation, I gave the store a method called `apply_middleware` that mutates the store itself by replacing its `next` function object with a new one, which can (optionally) call it. To log every action in the above example, you would do this:
+    for (auto subscriber : subscribers)
+    {
+        subscriber(*this);
+    }
+};
+```
+
+The store has a `next` member variable which is initialized with this definition, and `Store::dispatch` just invokes `next`. Each time `apple_middleware` is invoked, `next` is replaced with a new `next` that wraps the old one:
+
+```C++
+next = [this, old_next=next, middleware] (auto& action)
+{
+    middleware(*this, old_next, action);
+};
+return *this;
+```
+
+That's all middleware is (though reading the official docs, you might think it was more complicated). As an example, suppose you want to log each action, and the new state after that action was applied. You'd do this:
 
 ```C++
 store.apply_middleware([] (auto& store, auto next, auto& action)
@@ -54,4 +72,4 @@ store.apply_middleware([] (auto& store, auto next, auto& action)
 };
 ```
 
-`Store::apply_middleware` returns a non-const reference to the store, so you can chain the middlewares together. They will be called in the reverse order to how they were applied.
+`Store::apply_middleware` returns a non-const reference to the store, so you can chain the middlewares together. They will be called in the reverse order to how they were applied. Note also that if a middleware dispatches new actions to the store, those actions are filtered through the middleware chain from the beginning.

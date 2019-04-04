@@ -22,8 +22,6 @@ public:
     using NextFunc   = std::function<void(ActionType&)>;
     using Middleware = std::function<void(Store& store, NextFunc next, ActionType& action)>;
 
-    Store() {}
-
     Store(ReducerType reducer, StateType state)
     : state(state)
     , next(next_func(reducer))
@@ -47,9 +45,9 @@ public:
 
     Store& apply_middleware(Middleware middleware)
     {
-        next = [this, this_next=next, middleware] (ActionType& action)
+        next = [this, old_next=next, middleware] (auto& action)
         {
-            middleware(*this, this_next, action);
+            middleware(*this, old_next, action);
         };
         return *this;
     }
