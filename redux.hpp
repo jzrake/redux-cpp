@@ -29,7 +29,7 @@ public:
 
     store_t(ReducerType reducer, state_t state)
     : state(state)
-    , next(next_func(reducer))
+    , next(innermost_next(reducer))
     {
     }
 
@@ -59,7 +59,7 @@ public:
 
 private:
     //=========================================================================
-    next_t next_func(reducer_t reducer)
+    next_t innermost_next(reducer_t reducer)
     {
         return [this, reducer] (auto action)
         {

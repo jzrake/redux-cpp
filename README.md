@@ -92,17 +92,17 @@ These problems are non-trivial, but they are also already-solved, by the [Reacti
 ## Rx-Redux in C++
 `rx-redux.hpp` is a drop-in replacement for the single-thread version in `redux.hpp`. It leverages `RxCpp`'s implementation of the observer pattern to manage subscription lifetimes. It defines a proper `observable<state_t>`, as a `scan` operation applied to the action stream via the reducer (so, feel free to map it to an `observable<view_t>`). The store subscribes itself to the stream of states, and makes the most recent one accessible to middlewares in a thread-safe manner.
 
-The `rx-redux` store is copy and move constructible, same as the underlying `RxCpp` structs. It's also safer than the first implementation. Middleware functions are given a limited "proxy" store which only has `dispatch` and `get_state` methods (your middleware should not be able to use the other two store methods - applying more middleware or creating new subscriptions). Middleware that does need to access the state calls `store.get_state` on the proxy, and pays for this access by locking a mutex.
+The `rx-redux` store is copy and move constructible, having the same semantics as the underlying `RxCpp` structs. It's also safer than the first implementation. Middleware functions are invoked with a limited "proxy" store which only has `dispatch` and `get_state` methods (your middleware should not be able to use the other two store methods - applying more middleware or creating new subscriptions). Middleware that does need to access the state calls `store.get_state` on the proxy, and pays for this access by locking a mutex.
 
 
-## One step further: transform your action stream with 'bottomware'
-What do you do when your middlware needs to dispatch an action asynchronously to the store? You could start up a thread to do the work, and then invoke the `next` function from that thread as needed. However, to be honest, I'm not certain whether it's safe to do this in `RxCpp`! You'll see in the source that the innermost `next` invokes the subject's subscriber, and I don't believe `subscriber::on_next` is meant to be called from multiple threads. Anyway, there's an elegant solution to this!
+## One step further: dealing with asynchronous middleware
+What do you do when your middlware needs to dispatch an action asynchronously to the store? You could start up a thread to do the work, and then invoke the `next` function from that thread as needed. However, this misses much of the elegance afforded by `Rx`. It would be much nicer to leverage the existing features of `Rx`, and dispatch observable streams of actions to the store.
 
-First, tack onto your action struct a data member of type `observable<action_t>` (and a predicate `is_observable`). Then, set that data member to an observable scheduled on a background thread. Finally, dispatch that action to the store.
+To do this, first, tack onto your action struct a data member of type `observable<action_t>` (and a predicate `is_observable` for you to check later). Then, set that data member to an observable scheduled on a background thread. Finally, dispatch that action to the store.
 
-Well, not finally. Your action (with its observable data member) will be propagated through the action stream and middlewares just like the other. To trigger its work to start and get its emissions, you'll need someone to subscribe to the inner observable. To handle this situation, I've added an additional concept to the store: a _bottomware_.
+Well, not finally. Your action (with its observable data member) will be propagated through the action stream and middlewares just like the other. To get its emissions, you'll need someone to subscribe to the inner observable. This is done with an additional concept I've added to the store: a _bottomware_.
 
-The bottomware is a mapping of `action_stream_t -> action_stream_t`, which is applied to the stream of actions sourced by the store's subject. That is, it goes in between the middleware and the reducer. To get the actions from the inner observable you dispatched in your middleware, you would define your bottomware as follows:
+The bottomware is a mapping of `action_stream_t -> action_stream_t`, which is applied to the stream of actions sourced by the store's subject when the store is constructed. That is, it goes in between the middleware and the reducer. To get the actions from the inner observable you dispatched in your middleware, you would define your bottomware as follows:
 
 ```C++
 auto bottomware = [] (auto action_stream)
@@ -115,4 +115,8 @@ auto bottomware = [] (auto action_stream)
 ```
 Now your asynchronous actions are subscribed to and will begin entering the action stream!
 
-There's one caveat to be aware of with this pattern: the actions emitted by your inner observable entered the stream _after_ the middleware. Basically, they snuck through (prenatally - before they were even actions) inside their parent action. In some cases, you might not care about this, because maybe none of your middleware are interested in the types of actions resulting from asynchronous work.
+There's a caveat to be aware of with this pattern: the actions emitted by your inner observable entered the stream _after_ the middleware. Basically, they snuck through (prenatally - before they were even actions) inside their parent action. In some cases, you might not care about this, because maybe none of your middlewares are interested in the types of actions resulting from asynchronous work.
+
+
+## Redirecting actions that entered through nested obserables: 'runoff'
+However, for cases in which a middleware might be interested, I have added one additional concept, called `runoff`. It's a predicate `(action_t -> boolean)` which you can optionally supply to `create_store`, and which will divert actions you deem are not ready to reach the reducer. The store subscribes itself to this stream of runoff actions, and dispatches them on the 'main' thread (the one your store was created on). The default runoff predictate returns false for all actions. However, if you supply your own, then it should return true for any actions you know have snuck through your middleware by way of an inner observable, and should thus be re-dispatched.
