@@ -73,3 +73,20 @@ store.apply_middleware([] (auto& store, auto next, auto& action)
 ```
 
 `Store::apply_middleware` returns a non-const reference to the store, so you can chain the middlewares together. They will be called in the reverse order to how they were applied. Note also that if a middleware dispatches new actions to the store, those actions are filtered through the middleware chain from the beginning.
+
+
+## Limitations
+The store implementation in redux.hpp is limited in several ways:
+
+- __no move or copy__: The store class is not move or copy constructible. This is because the `this` pointer is captured in the lambda closures used. A work-around is to use the `redux::create_store_prt` function to create a move-constructible version.
+
+- __no unsubscribe__: Subscriptions to the store are permanent.
+
+- __no thread safety__: Your middleware cannot call `next` or `store.dispatch` from a background thread. This makes it a pain to do asynchronous work in the middleware. You'd need to launch work (`(store, action) -> action`) on an external service (e.g. a thread pool), then poll that service on the main thread for the resulting actions, and then dispatch them to the store. You can implement this by putting a promise-resolving middleware downstream of the one that launched the async work. But, what if you were perfectly happy (or even wanted) to dispatch actions, and evaluate the reducer a background thread? Come to think of it, you might even stay on the background thread to compute `state -> view`...
+
+Consider the requirements to overcome these limitations. You'd be implementing the observer pattern, which means that `store.subscribe` gets the signature `observer -> subscription`, where `subscription` provides an `unsubscribe` method. And, you'd be coordinating calls to `next` and `dispatch` from multiple threads.
+
+These problems are non-trivial, but they are also already-solved, by the [Reactive Extensions](http://reactivex.io)! And, since we have [`RxCpp`](https://github.com/ReactiveX/RxCpp), I thought it would be nice to provide a more production-ready redux implementation by taking a dependency on `Rx`.
+
+
+
