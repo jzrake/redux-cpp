@@ -108,4 +108,17 @@ auto create_store(ReducerType reducer, StateType state=StateType())
     return Store<StateType, ActionType, ReducerType>(reducer, state);
 }
 
+
+
+
+//=============================================================================
+template<
+    typename ReducerType,
+    typename StateType = typename detail::function_traits<ReducerType>::template arg<0>::type,
+    typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type>
+auto create_store_ptr(ReducerType reducer, StateType state=StateType())
+{
+    return std::make_unique<Store<StateType, ActionType, ReducerType>>(reducer, state);
+}
+
 } // namespace redux
