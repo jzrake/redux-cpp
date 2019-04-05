@@ -14,40 +14,43 @@ template<
     typename StateType,
     typename ActionType,
     typename ReducerType>
-class Store
+class store_t
 {
 public:
 
-    using Subscriber = std::function<void(const Store&)>;
-    using NextFunc   = std::function<void(ActionType&)>;
-    using Middleware = std::function<void(Store& store, NextFunc next, ActionType& action)>;
+    using state_t      = StateType;
+    using action_t     = ActionType;
+    using reducer_t    = ReducerType;
+    using next_t       = std::function<void(action_t)>;
+    using middleware_t = std::function<void(store_t& store, next_t next, action_t action)>;
+    using subscriber_t = std::function<void(state_t)>;
 
-    Store(const Store& other) = delete;
+    store_t(const store_t& other) = delete;
 
-    Store(ReducerType reducer, StateType state)
+    store_t(ReducerType reducer, state_t state)
     : state(state)
     , next(next_func(reducer))
     {
     }
 
-    void dispatch(ActionType action)
+    void dispatch(action_t action)
     {
         next(action);
     }
 
-    const StateType& get_state() const
+    const state_t& get_state() const
     {
         return state;
     }
 
-    void subscribe(Subscriber subscriber)
+    void subscribe(subscriber_t subscriber)
     {
         subscribers.push_back(subscriber);
     }
 
-    Store& apply_middleware(Middleware middleware)
+    store_t& apply_middleware(middleware_t middleware)
     {
-        next = [this, old_next=next, middleware] (auto& action)
+        next = [this, old_next=next, middleware] (auto action)
         {
             middleware(*this, old_next, action);
         };
@@ -56,22 +59,22 @@ public:
 
 private:
     //=========================================================================
-    NextFunc next_func(ReducerType reducer)
+    next_t next_func(reducer_t reducer)
     {
-        return [this, reducer] (ActionType& action)
+        return [this, reducer] (auto action)
         {
             state = reducer(state, action);
 
             for (auto subscriber : subscribers)
             {
-                subscriber(*this);
+                subscriber(state);
             }
         };
     }
 
-    NextFunc next;
-    StateType state;
-    std::vector<Subscriber> subscribers;
+    next_t next;
+    state_t state;
+    std::vector<subscriber_t> subscribers;
 };
 
 
@@ -105,7 +108,7 @@ template<
     typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type>
 auto create_store(ReducerType reducer, StateType state=StateType())
 {
-    return Store<StateType, ActionType, ReducerType>(reducer, state);
+    return store_t<StateType, ActionType, ReducerType>(reducer, state);
 }
 
 
@@ -118,7 +121,7 @@ template<
     typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type>
 auto create_store_ptr(ReducerType reducer, StateType state=StateType())
 {
-    return std::make_unique<Store<StateType, ActionType, ReducerType>>(reducer, state);
+    return std::make_unique<store_t<StateType, ActionType, ReducerType>>(reducer, state);
 }
 
 } // namespace redux

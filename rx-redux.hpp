@@ -1,18 +1,15 @@
-#include <iostream>
+#pragma once
 #include <rxcpp/rx.hpp>
 
 
 
 
-//==============================================================================
-using namespace rxcpp;
-using State = int;
-using Action = std::string;
-
-
+//=============================================================================
+namespace redux {
 
 
 //=============================================================================
+template<typename StateType, typename ActionType>
 class redux_t
 {
 public:
@@ -23,11 +20,11 @@ public:
     class store_t;
     class dispatcher_t;
 
-    using state_t        = State;
-    using action_t       = Action;
+    using state_t        = StateType;
+    using action_t       = ActionType;
     using reducer_t      = std::function<state_t(state_t, action_t)>;
     using next_t         = std::function<void(action_t)>;
-    using middleware_t   = std::function<void(proxy_t, action_t, next_t)>;
+    using middleware_t   = std::function<void(proxy_t, next_t, action_t)>;
     using subscriber_t   = std::function<void(state_t)>;
     using action_bus_t   = rxcpp::subjects::subject<action_t>;
     using state_stream_t = rxcpp::observable<state_t>;
@@ -101,11 +98,10 @@ public:
             *shared_next = [
                 middleware,
                 proxy=proxy,
-                shared_state=shared_state,
                 shared_next=shared_next,
-                next=*shared_next] (action_t action)
+                next=*shared_next] (auto action)
             {
-                middleware(proxy, action, next);
+                middleware(proxy, next, action);
             };
         }
 
@@ -121,9 +117,10 @@ public:
     class store_t
     {
     public:
-        store_t(reducer_t reducer, state_t state=state_t()) : dispatcher(make_next(), state)
+        store_t(reducer_t reducer, state_t state=state_t())
+        : dispatcher(make_next(), state)
+        , state_stream(action_bus.get_observable().scan(state, reducer))
         {
-            state_stream = action_bus.get_observable().scan(state, reducer);
             state_stream.subscribe([this] (auto state)
             {
                 dispatcher.set_state(state);
@@ -166,84 +163,34 @@ public:
 
 
 //=============================================================================
-int main()
+namespace detail
 {
+    template <typename T>
+    struct function_traits : public function_traits<decltype(&T::operator())> {};
 
-
-    // Reducer
-    //=========================================================================
-    auto reducer = [] (State state, Action action)
+    template <typename ClassType, typename ReturnType, typename... Args>
+    struct function_traits<ReturnType(ClassType::*)(Args...) const>
     {
-        if (action == "Increment")
-            return state + 1;
-        if (action == "Decrement")
-            return state - 1;
-        return state;
+        typedef ReturnType result_type;
+        enum { arity = sizeof...(Args) };
+        template <size_t i> struct arg
+        {
+            typedef typename std::tuple_element<i, std::tuple<Args...>>::type type;
+        };
     };
-
-
-    // Middleware functions
-    //=========================================================================
-    auto log_state = [] (auto store, auto action, auto next)
-    {
-        if (action == "Log")
-        {
-            std::cout << "The state is " << store.get_state() << std::endl;
-        }
-        else
-        {
-            next(action);
-        }
-    };
-    auto cancel_if_empty = [] (auto store, auto action, auto next)
-    {
-        if (! action.empty())
-        {
-            next(action);
-        }
-        else
-        {
-            std::cout << "That was an empty action!" << std::endl;
-        }
-    };
-    auto dispatch_more = [] (auto store, auto action, auto next)
-    {
-        if (action == "Dispatch")
-        {
-            store.dispatch("Increment");
-            store.dispatch("Log");
-            store.dispatch("Increment");
-            store.dispatch("Log");
-        }
-        else
-        {
-            next(action);
-        }
-    };
-
-
-    // Store creation
-    //=========================================================================
-    auto store = redux_t::store_t(reducer)
-    .apply_middleware(dispatch_more)
-    .apply_middleware(log_state)
-    .apply_middleware(cancel_if_empty);
-
-
-    // Subscribe, and run it!
-    //=========================================================================
-    store.subscribe([] (State state) { std::cout << state << std::endl; });
-    store.dispatch("Increment");
-    store.dispatch("Log");
-    store.dispatch("Increment");
-    store.dispatch("Log");
-    store.dispatch("Decrement");
-    store.dispatch("Log");
-    store.dispatch("Decrement");
-    store.dispatch("Log");
-    store.dispatch("Dispatch");
-    store.dispatch(std::string());
-
-
-    return 0;
 }
+
+
+
+
+//=============================================================================
+template<
+    typename ReducerType,
+    typename StateType = typename detail::function_traits<ReducerType>::template arg<0>::type,
+    typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type>
+auto create_store(ReducerType reducer, StateType state=StateType())
+{
+    return typename redux_t<StateType, ActionType>::store_t(reducer, state);
+}
+
+} // namespace redux

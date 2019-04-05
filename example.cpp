@@ -1,33 +1,9 @@
 #include <iostream>
+#ifdef HAVE_RXCPP
+#include "rx-redux.hpp"
+#else
 #include "redux.hpp"
-
-
-
-
-//=============================================================================
-struct State
-{
-    int count = 0;
-};
-
-
-
-
-//=============================================================================
-struct Action
-{
-    enum class Type
-    {
-        Increment,
-        Decrement,
-        LogMessage,
-    };
-
-    Action() {}
-    Action(Type type) : type(type) {}
-
-    Type type;
-};
+#endif
 
 
 
@@ -35,42 +11,86 @@ struct Action
 //=============================================================================
 int main()
 {
-    auto reducer = std::function<State(State, Action)>([] (State state, Action action)
+    using State = int;
+    using Action = std::string;
+
+
+    // Reducer
+    //=========================================================================
+    auto reducer = [] (State state, Action action)
     {
-        switch (action.type)
+        if (action == "Increment")
+            return state + 1;
+        if (action == "Decrement")
+            return state - 1;
+        return state;
+    };
+
+
+    // Middleware functions
+    //=========================================================================
+    auto log_state = [] (auto&& store, auto next, auto action)
+    {
+        if (action == "Log")
         {
-            case Action::Type::Increment: return State {state.count + 1};
-            case Action::Type::Decrement: return State {state.count - 1};
-            case Action::Type::LogMessage: return state;
+            std::cout << "The state is " << store.get_state() << std::endl;
         }
-    });
+        else
+        {
+            next(action);
+        }
+    };
+    auto cancel_if_empty = [] (auto&& store, auto next, auto action)
+    {
+        if (! action.empty())
+        {
+            next(action);
+        }
+        else
+        {
+            std::cout << "That was an empty action!" << std::endl;
+        }
+    };
+    auto dispatch_more = [] (auto&& store, auto next, auto action)
+    {
+        if (action == "Dispatch")
+        {
+            store.dispatch("Increment");
+            store.dispatch("Log");
+            store.dispatch("Increment");
+            store.dispatch("Log");
+        }
+        else
+        {
+            next(action);
+        }
+    };
+
+
+    // Store creation
+    //=========================================================================
     auto store = redux::create_store(reducer);
 
-
-
-    auto middleware1 = [] (auto& store, auto next, auto& action)
-    {
-        std::cout << "Log a first message!" << std::endl;
-        next(action);
-    };
-
-    auto middleware2 = [] (auto& store, auto next, auto& action)
-    {
-        std::cout << "Log another message!" << std::endl;
-        next(action);
-    };
-
-
     store
-    .apply_middleware(middleware1)
-    .apply_middleware(middleware2);
+    .apply_middleware(dispatch_more)
+    .apply_middleware(log_state)
+    .apply_middleware(cancel_if_empty);
 
 
-    store.subscribe([] (auto& store)
-    {
-        std::cout << "should be 1: " << store.get_state().count << std::endl;
-    });
-    store.dispatch(Action::Type::Increment);
+    // Subscribe, and run it!
+    //=========================================================================
+    store.subscribe([] (State state) { std::cout << state << std::endl; });
+    store.dispatch("Increment");
+    store.dispatch("Log");
+    store.dispatch("Increment");
+    store.dispatch("Log");
+    store.dispatch("Decrement");
+    store.dispatch("Log");
+    store.dispatch("Decrement");
+    store.dispatch("Log");
+    store.dispatch("Dispatch");
+    store.dispatch(std::string());
+
 
     return 0;
 }

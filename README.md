@@ -24,9 +24,9 @@ auto reducer = [] (State state, Action action)
 auto store = redux::create_store(reducer);
 
 /* Subscribe to the store to be notified when its state changes. */
-store.subscribe([] (auto&& store)
+store.subscribe([] (auto state)
 {
-    std::cout << "state: " << store.get_state() << std::endl;
+    std::cout << "state: " << state << std::endl;
 });
 
 /* Dispatch actions to the store. */
@@ -40,21 +40,21 @@ Middleware is how the redux pattern constrains an application's influence on the
 If you visit the [official documentation](https://redux.js.org/advanced/middleware#middleware), you'll see an article that walks you through the steps that led to the current formulation of middleware. But I think for C++ programmers it's easier to say outright what the pattern actually is. Middleware is a chain of operators that wrap the store's `dispatch` function. Each link in the chain can operate on the store, on the action, or on external services, and can then optionally invoke the next link in the chain. The final link is the store's original middleware, which is defined as follows:
 
 ```C++
-next = [this, reducer] (auto& action)
+return [this, reducer] (auto action)
 {
     state = reducer(state, action);
 
     for (auto subscriber : subscribers)
     {
-        subscriber(*this);
+        subscriber(state);
     }
 };
 ```
 
-The store has a `next` member variable which is initialized with this definition, and `Store::dispatch` just invokes `next`. Each time `apple_middleware` is invoked, `next` is replaced with a new `next` that wraps the old one:
+The store has a `next` member variable which is initialized with this definition, and `store_t::dispatch` just invokes `next`. Each time `apple_middleware` is invoked, `next` is replaced with a new `next` that wraps the old one:
 
 ```C++
-next = [this, old_next=next, middleware] (auto& action)
+next = [this, old_next=next, middleware] (auto action)
 {
     middleware(*this, old_next, action);
 };
@@ -64,7 +64,7 @@ return *this;
 That's all middleware is (though reading the official docs, you might think it was more complicated). As an example, suppose you want to log each action, and the new state after that action was applied. You'd do this:
 
 ```C++
-store.apply_middleware([] (auto& store, auto next, auto& action)
+store.apply_middleware([] (auto&& store, auto next, auto action)
 {
     std::cout << "Dispatching " << action << std::endl;
     next(action);
