@@ -210,6 +210,11 @@ public:
             return state_stream.subscribe(subscriber);
         }
 
+        auto get_state_stream() const
+        {
+            return state_stream;
+        }
+
     private:
         next_t innermost_next()
         {

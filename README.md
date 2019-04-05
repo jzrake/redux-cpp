@@ -51,7 +51,7 @@ return [this, reducer] (auto action)
 };
 ```
 
-The store has a `next` member variable which is initialized with this definition, and `store_t::dispatch` just invokes `next`. Each time `apple_middleware` is invoked, `next` is replaced with a new `next` that wraps the old one:
+The store has a `next` member variable which is initialized with this definition, and `store_t::dispatch` just invokes `next`. Each time `apply_middleware` is invoked, `next` is replaced with a new `next` that wraps the old one:
 
 ```C++
 next = [this, old_next=next, middleware] (auto action)
@@ -72,7 +72,7 @@ store.apply_middleware([] (auto&& store, auto next, auto action)
 };
 ```
 
-`Store::apply_middleware` returns a non-const reference to the store, so you can chain the middlewares together. They will be called in the reverse order to how they were applied. Note also that if a middleware dispatches new actions to the store, those actions are filtered through the middleware chain from the beginning.
+`store_t::apply_middleware` returns a non-const reference to the store, so you can chain the middlewares together. They will be called in the reverse order to how they were applied. Note also that if a middleware dispatches new actions to the store, those actions are filtered through the middleware chain from the beginning.
 
 
 ## Limitations
