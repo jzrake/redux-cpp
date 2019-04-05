@@ -22,6 +22,8 @@ public:
     using NextFunc   = std::function<void(ActionType&)>;
     using Middleware = std::function<void(Store& store, NextFunc next, ActionType& action)>;
 
+    Store(const Store& other) = delete;
+
     Store(ReducerType reducer, StateType state)
     : state(state)
     , next(next_func(reducer))
