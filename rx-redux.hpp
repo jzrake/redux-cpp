@@ -20,14 +20,16 @@ public:
     class store_t;
     class dispatcher_t;
 
-    using state_t        = StateType;
-    using action_t       = ActionType;
-    using reducer_t      = std::function<state_t(state_t, action_t)>;
-    using next_t         = std::function<void(action_t)>;
-    using middleware_t   = std::function<void(proxy_t, next_t, action_t)>;
-    using subscriber_t   = std::function<void(state_t)>;
-    using action_bus_t   = rxcpp::subjects::subject<action_t>;
-    using state_stream_t = rxcpp::observable<state_t>;
+    using state_t         = StateType;
+    using action_t        = ActionType;
+    using action_bus_t    = rxcpp::subjects::subject<action_t>;
+    using action_stream_t = rxcpp::observable<action_t>;
+    using state_stream_t  = rxcpp::observable<state_t>;
+    using reducer_t       = std::function<state_t(state_t, action_t)>;
+    using next_t          = std::function<void(action_t)>;
+    using subscriber_t    = std::function<void(state_t)>;
+    using middleware_t    = std::function<void(proxy_t, next_t, action_t)>;
+    using bottomware_t    = std::function<action_stream_t(action_stream_t)>;
 
 
     //=========================================================================
@@ -117,9 +119,9 @@ public:
     class store_t
     {
     public:
-        store_t(reducer_t reducer, state_t state=state_t())
+        store_t(reducer_t reducer, bottomware_t bottomware, state_t state=state_t())
         : dispatcher(make_next(), state)
-        , state_stream(action_bus.get_observable().scan(state, reducer))
+        , state_stream(bottomware(action_bus.get_observable()).scan(state, reducer))
         {
             state_stream.subscribe([this] (auto state)
             {
@@ -186,11 +188,12 @@ namespace detail
 //=============================================================================
 template<
     typename ReducerType,
-    typename StateType = typename detail::function_traits<ReducerType>::template arg<0>::type,
-    typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type>
-auto create_store(ReducerType reducer, StateType state=StateType())
+    typename StateType  = typename detail::function_traits<ReducerType>::template arg<0>::type,
+    typename ActionType = typename detail::function_traits<ReducerType>::template arg<1>::type,
+    typename BottomwareType = typename redux_t<StateType, ActionType>::bottomware_t>
+auto create_store(ReducerType reducer, BottomwareType bottomware=[](auto o){return o;}, StateType state=StateType())
 {
-    return typename redux_t<StateType, ActionType>::store_t(reducer, state);
+    return typename redux_t<StateType, ActionType>::store_t(reducer, bottomware, state);
 }
 
 } // namespace redux

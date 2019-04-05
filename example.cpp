@@ -15,6 +15,7 @@ int main()
     using Action = std::string;
 
 
+
     // Reducer
     //=========================================================================
     auto reducer = [] (State state, Action action)
@@ -69,7 +70,14 @@ int main()
 
     // Store creation
     //=========================================================================
+#ifdef HAVE_RXCPP
+    // If we're on RxCpp, then use the 'bottomware' option to apply a delay to
+    // the action stream.
+    auto bottomware = [] (auto o) { return o.delay(std::chrono::milliseconds(100)); };
+    auto store = redux::create_store(reducer, bottomware);
+#else
     auto store = redux::create_store(reducer);
+#endif
 
     store
     .apply_middleware(dispatch_more)

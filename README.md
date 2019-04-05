@@ -93,3 +93,26 @@ These problems are non-trivial, but they are also already-solved, by the [Reacti
 `rx-redux.hpp` is a drop-in replacement for the single-thread version in `redux.hpp`. It leverages `RxCpp`'s implementation of the observer pattern to manage subscription lifetimes. It defines a proper `observable<state_t>`, as a `scan` operation applied to the action stream via the reducer (so, feel free to map it to an `observable<view_t>`). The store subscribes itself to the stream of states, and makes the most recent one accessible to middlewares in a thread-safe manner.
 
 The `rx-redux` store is copy and move constructible, same as the underlying `RxCpp` structs. It's also safer than the first implementation. Middleware functions are given a limited "proxy" store which only has `dispatch` and `get_state` methods (your middleware should not be able to use the other two store methods - applying more middleware or creating new subscriptions). Middleware that does need to access the state calls `store.get_state` on the proxy, and pays for this access by locking a mutex.
+
+
+## One step further: transform your action stream with 'bottomware'
+What do you do when your middlware needs to dispatch an action asynchronously to the store? You could start up a thread to do the work, and then invoke the `next` function from that thread as needed. However, to be honest, I'm not certain whether it's safe to do this in `RxCpp`! You'll see in the source that the innermost `next` invokes the subject's subscriber, and I don't believe `subscriber::on_next` is meant to be called from multiple threads. Anyway, there's an elegant solution to this!
+
+First, tack onto your action struct a data member of type `observable<action_t>` (and a predicate `is_observable`). Then, set that data member to an observable scheduled on a background thread. Finally, dispatch that action to the store.
+
+Well, not finally. Your action (with its observable data member) will be propagated through the action stream and middlewares just like the other. To trigger its work to start and get its emissions, you'll need someone to subscribe to the inner observable. To handle this situation, I've added an additional concept to the store: a _bottomware_.
+
+The bottomware is a mapping of `action_stream_t -> action_stream_t`, which is applied to the stream of actions sourced by the store's subject. That is, it goes in between the middleware and the reducer. To get the actions from the inner observable you dispatched in your middleware, you would define your bottomware as follows:
+
+```C++
+auto bottomware = [] (auto action_stream)
+{
+    return action_stream.map([] (auto a)
+    {
+        return a.is_observable() ? a.get_observable() : observable<>::just(a);
+    }).merge();
+};
+```
+Now your asynchronous actions are subscribed to and will begin entering the action stream!
+
+There's one caveat to be aware of with this pattern: the actions emitted by your inner observable entered the stream _after_ the middleware. Basically, they snuck through (prenatally - before they were even actions) inside their parent action. In some cases, you might not care about this, because maybe none of your middleware are interested in the types of actions resulting from asynchronous work.
