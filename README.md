@@ -76,7 +76,7 @@ store.apply_middleware([] (auto&& store, auto next, auto action)
 
 
 ## Limitations
-The store implementation in redux.hpp is limited in several ways:
+The store implementation in `redux.hpp` is limited in several ways:
 
 - __no move or copy__: The store class is not move or copy constructible. This is because the `this` pointer is captured in the lambda closures used. A work-around is to use the `redux::create_store_prt` function to create a move-constructible version.
 
@@ -84,9 +84,12 @@ The store implementation in redux.hpp is limited in several ways:
 
 - __no thread safety__: Your middleware cannot call `next` or `store.dispatch` from a background thread. This makes it a pain to do asynchronous work in the middleware. You'd need to launch work (`(store, action) -> action`) on an external service (e.g. a thread pool), then poll that service on the main thread for the resulting actions, and then dispatch them to the store. You can implement this by putting a promise-resolving middleware downstream of the one that launched the async work. But, what if you were perfectly happy (or even wanted) to dispatch actions, and evaluate the reducer a background thread? Come to think of it, you might even stay on the background thread to compute `state -> view`...
 
-Consider the requirements to overcome these limitations. You'd be implementing the observer pattern, which means that `store.subscribe` gets the signature `observer -> subscription`, where `subscription` provides an `unsubscribe` method. And, you'd be coordinating calls to `next` and `dispatch` from multiple threads.
+Consider the requirements to overcome these limitations. You'll first need to implement the observer pattern (meaning that `store.subscribe` needs to have the signature `observer -> subscription`, where `subscription` provides an `unsubscribe` method). And, you'd be coordinating calls to `next` and `dispatch` from multiple threads.
 
 These problems are non-trivial, but they are also already-solved, by the [Reactive Extensions](http://reactivex.io)! And, since we have [`RxCpp`](https://github.com/ReactiveX/RxCpp), I thought it would be nice to provide a more production-ready redux implementation by taking a dependency on `Rx`.
 
 
+## Rx-Redux in C++
+`rx-redux.hpp` is a drop-in replacement for the single-thread version in `redux.hpp`. It leverages `RxCpp`'s implementation of the observer pattern to manage subscription lifetimes. It defines a proper `observable<state_t>`, as a `scan` operation applied to the action stream via the reducer (so, feel free to map it to an `observable<view_t>`). The store subscribes itself to the stream of states, and makes the most recent one accessible to middlewares in a thread-safe manner.
 
+The `rx-redux` store is copy and move constructible, same as the underlying `RxCpp` structs. It's also safer than the first implementation. Middleware functions are given a limited "proxy" store which only has `dispatch` and `get_state` methods (your middleware should not be able to use the other two store methods - applying more middleware or creating new subscriptions). Middleware that does need to access the state calls `store.get_state` on the proxy, and pays for this access by locking a mutex.
