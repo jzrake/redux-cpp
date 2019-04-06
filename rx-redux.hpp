@@ -180,13 +180,16 @@ public:
         , state_stream(action_stream.filter(detail::negate(runoff_pred)).scan(state, reducer))
 
         {
-            action_runoff.subscribe([this] (auto action)
+            // Can't capture the dipatcher by value without mutable...
+            auto dp = std::make_shared<dispatcher_t>(dispatcher);
+
+            action_runoff.subscribe([dispatcher=dp] (auto action)
             {
-                dispatcher.dispatch(action);
+                dispatcher->dispatch(action);
             });
-            state_stream.subscribe([this] (auto state)
+            state_stream.subscribe([dispatcher=dp] (auto state)
             {
-                dispatcher.set_state(state);
+                dispatcher->set_state(state);
             });
         }
 
