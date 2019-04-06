@@ -170,9 +170,9 @@ public:
     public:
         store_t(
             reducer_t reducer,
-            bottomware_t bottomware,
-            runoff_pred_t runoff_pred,
-            state_t state)
+            bottomware_t bottomware=[] (auto o) { return o; },
+            runoff_pred_t runoff_pred=[] (auto) { return false; },
+            state_t state=state_t())
 
         : dispatcher(innermost_next(), state)
         , action_stream(bottomware(action_bus.get_observable()))
