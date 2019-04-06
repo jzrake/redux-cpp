@@ -82,15 +82,16 @@ public:
             std::shared_ptr<next_t> shared_next,
             std::shared_ptr<state_t> shared_state,
             std::shared_ptr<std::mutex> shared_state_mutex)
+
         : shared_next(shared_next)
         , shared_state(shared_state)
         , shared_state_mutex(shared_state_mutex)
         {
         }
 
-        std::shared_ptr<next_t>             shared_next;
-        std::shared_ptr<state_t>            shared_state;
-        std::shared_ptr<std::mutex> mutable shared_state_mutex;
+        std::shared_ptr<next_t>     shared_next;
+        std::shared_ptr<state_t>    shared_state;
+        std::shared_ptr<std::mutex> shared_state_mutex;
     };
 
 
@@ -153,13 +154,13 @@ public:
         }
 
     private:
-        std::shared_ptr<next_t>      shared_next;
-        std::shared_ptr<state_t>     shared_state;
-        std::shared_ptr<std::mutex>  shared_state_mutex;
-        std::shared_ptr<std::mutex>  dispatch_mutex;
-        std::thread::id              dispatch_thread_id;
-        std::queue<action_t>         dispatch_queue;
-        proxy_t proxy;
+        std::shared_ptr<next_t>     shared_next;
+        std::shared_ptr<state_t>    shared_state;
+        std::shared_ptr<std::mutex> shared_state_mutex;
+        std::shared_ptr<std::mutex> dispatch_mutex;
+        std::thread::id             dispatch_thread_id;
+        std::queue<action_t>        dispatch_queue;
+        proxy_t                     proxy;
     };
 
 
@@ -220,11 +221,11 @@ public:
         {
             return [s=action_bus.get_subscriber()] (action_t action) { s.on_next(action); };
         }
-        action_bus_t action_bus;
-        dispatcher_t dispatcher;
+        action_bus_t    action_bus;
+        dispatcher_t    dispatcher;
         action_stream_t action_stream;
         action_stream_t action_runoff;
-        state_stream_t state_stream;
+        state_stream_t  state_stream;
     };
 };
 
