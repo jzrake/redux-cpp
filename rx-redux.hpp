@@ -76,7 +76,7 @@ public:
 
             if (std::this_thread::get_id() == dispatch_thread_id)
             {
-                dispatch_queue.push(std::move(action));
+                dispatch_queue->push(std::move(action));
             }
             else
             {
@@ -91,22 +91,25 @@ public:
             std::shared_ptr<next_t> shared_next,
             std::shared_ptr<state_t> shared_state,
             std::shared_ptr<std::mutex> shared_state_mutex,
+            std::shared_ptr<std::queue<action_t>> dispatch_queue,
             std::shared_ptr<std::recursive_mutex> dispatch_mutex,
             std::thread::id dispatch_thread_id)
 
         : shared_next(shared_next)
         , shared_state(shared_state)
         , shared_state_mutex(shared_state_mutex)
+        , dispatch_queue(dispatch_queue)
         , dispatch_mutex(dispatch_mutex)
         , dispatch_thread_id(dispatch_thread_id)
         {
         }
 
-        std::shared_ptr<next_t>     shared_next;
-        std::shared_ptr<state_t>    shared_state;
-        std::shared_ptr<std::mutex> shared_state_mutex;
+        std::shared_ptr<next_t>               shared_next;
+        std::shared_ptr<state_t>              shared_state;
+        std::shared_ptr<std::mutex>           shared_state_mutex;
+        std::shared_ptr<std::queue<action_t>> dispatch_queue;
         std::shared_ptr<std::recursive_mutex> dispatch_mutex;
-        std::thread::id             dispatch_thread_id;
+        std::thread::id                       dispatch_thread_id;
     };
 
 
@@ -118,23 +121,30 @@ public:
         : shared_next       (std::make_shared<next_t>(next))
         , shared_state      (std::make_shared<state_t>(state))
         , shared_state_mutex(std::make_shared<std::mutex>())
+        , dispatch_queue    (std::make_shared<std::queue<action_t>>())
         , dispatch_mutex    (std::make_shared<std::recursive_mutex>())
         , dispatch_thread_id(std::this_thread::get_id())
-        , proxy(shared_next, shared_state, shared_state_mutex, dispatch_mutex, dispatch_thread_id)
+        , proxy(
+            shared_next,
+            shared_state,
+            shared_state_mutex,
+            dispatch_queue,
+            dispatch_mutex,
+            dispatch_thread_id)
         {
         }
 
         void dispatch(action_t action)
         {
             std::lock_guard<std::recursive_mutex> lock(*dispatch_mutex);
+            dispatch_queue->push(std::move(action));
 
-            dispatch_queue.push(std::move(action));
             if (std::this_thread::get_id() == dispatch_thread_id)
             {
-                while (! dispatch_queue.empty())
+                while (! dispatch_queue->empty())
                 {
-                    shared_next->operator()(std::move(dispatch_queue.front()));
-                    dispatch_queue.pop();
+                    shared_next->operator()(std::move(dispatch_queue->front()));
+                    dispatch_queue->pop();
                 }
             }
         }
@@ -164,13 +174,13 @@ public:
         }
 
     private:
-        std::shared_ptr<next_t>     shared_next;
-        std::shared_ptr<state_t>    shared_state;
-        std::shared_ptr<std::mutex> shared_state_mutex;
+        std::shared_ptr<next_t>               shared_next;
+        std::shared_ptr<state_t>              shared_state;
+        std::shared_ptr<std::mutex>           shared_state_mutex;
+        std::shared_ptr<std::queue<action_t>> dispatch_queue;
         std::shared_ptr<std::recursive_mutex> dispatch_mutex;
-        std::thread::id             dispatch_thread_id;
-        std::queue<action_t>        dispatch_queue;
-        proxy_t                     proxy;
+        std::thread::id                       dispatch_thread_id;
+        proxy_t                               proxy;
     };
 
 
