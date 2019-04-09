@@ -25,11 +25,21 @@ struct undoable
     }
 
     template<typename Function, typename... Args>
-    undoable apply(Function&& fn, Args&&... args) const
+    undoable advance(Function&& fn, Args&&... args) const
     {
         return {
             fn(present, std::forward<Args...>(args)...),
             past.push_back(present),
+            {},
+        };
+    }
+
+    template<typename Function, typename... Args>
+    undoable replace(Function&& fn, Args&&... args) const
+    {
+        return {
+            fn(present, std::forward<Args...>(args)...),
+            past,
             {},
         };
     }
