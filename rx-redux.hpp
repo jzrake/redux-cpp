@@ -87,6 +87,7 @@ public:
     private:
         friend class dispatcher_t;
 
+        proxy_t() {}
         proxy_t(
             std::shared_ptr<next_t> shared_next,
             std::shared_ptr<state_t> shared_state,
@@ -117,6 +118,7 @@ public:
     class dispatcher_t
     {
     public:
+        dispatcher_t() {}
         dispatcher_t(next_t next, state_t state=state_t())
         : shared_next       (std::make_shared<next_t>(next))
         , shared_state      (std::make_shared<state_t>(state))
@@ -188,6 +190,7 @@ public:
     class store_t
     {
     public:
+        store_t() {}
         store_t(
             reducer_t reducer,
             bottomware_t bottomware=[] (auto o) { return o; },
@@ -197,8 +200,11 @@ public:
         : dispatcher(innermost_next(), state)
         , action_stream(bottomware(action_bus.get_observable()))
         , action_runoff(action_stream.filter(runoff_pred))
-        , state_stream(action_stream.filter(detail::negate(runoff_pred)).scan(state, reducer))
-
+        , state_stream(action_stream
+                       .filter(detail::negate(runoff_pred))
+                       .scan(state, reducer)
+                       .publish()
+                       .ref_count())
         {
             // Can't capture the dipatcher by value without mutable...
             auto dp = std::make_shared<dispatcher_t>(dispatcher);
